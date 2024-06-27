@@ -1,0 +1,14 @@
+# Caddyfile used for webhook
+# Change the domain to your's
+# Change the route to the URL_PATH (docker-compose.yml) and change the port number (port mapping in docker-compose.yml)
+
+https://hook.examlple.xyz {
+        encode gzip
+        tls internal
+        route /test {
+                reverse_proxy http://127.0.0.1:9968
+        }
+        ; route /good {
+        ;         reverse_proxy http://127.0.0.1:9969
+        ; }
+}

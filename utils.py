@@ -1,13 +1,25 @@
 import re
 from threading import Thread
 import functools
+import gettext
 import time
 import json
 import os
 
+CONFIG_FILE = './config/.config.json'
+
+USERBOT_CHAT_MEMBERS_FILE = '.userbot_chat_members'
+USERBOT_ADMIN_FILE = '.userbot_admin'
+
+def get_text_func():
+    # Init i18n func
+    gettext.bindtextdomain('bot', 'locale')
+    gettext.textdomain('bot')
+    _ = gettext.gettext
+    return _
 
 def delay_delete(bot, chat_id, message_id):
-    time.sleep(30)
+    time.sleep(60)
     bot.delete_message(chat_id=chat_id, message_id=message_id)
 
 
@@ -50,9 +62,9 @@ def get_bot_id(bot):
 
 
 def read_config():
-    if not os.path.exists('.config.json'):
+    if not os.path.exists(CONFIG_FILE):
         return None
-    f = open('.config.json')
+    f = open(CONFIG_FILE)
     config_dict = json.load(f)
     f.close()
     return config_dict
@@ -70,3 +82,51 @@ def check_control_permission(from_user_id):
             return None
     except:
         return None
+
+
+def load_chat_members():
+    if not os.path.exists(USERBOT_CHAT_MEMBERS_FILE):
+        with open(USERBOT_CHAT_MEMBERS_FILE, 'w') as f:
+            json.dump({}, f)
+
+    with open(USERBOT_CHAT_MEMBERS_FILE, 'r') as f:
+        chat_members = json.load(f)
+    return chat_members
+
+
+def write_chat_members(chat_members):
+    with open(USERBOT_CHAT_MEMBERS_FILE, 'w') as f:
+        json.dump(chat_members, f)
+
+
+def get_filter_chats(user_id):
+    filter_chats = []
+    chat_members = load_chat_members()
+    for chat_id in chat_members:
+        if user_id in chat_members[chat_id]['members']:
+            filter_chats.append((int(chat_id),chat_members[chat_id]['title']))
+    return filter_chats
+
+
+def is_userbot_mode():
+    env = os.getenv("USER_BOT")
+    if not env:
+        return False
+    return os.getenv("USER_BOT")=="1"
+
+
+def update_userbot_admin_id(user_id):
+    current_id = -1
+    if os.path.exists(USERBOT_ADMIN_FILE):
+        with open(USERBOT_ADMIN_FILE) as f:
+            current_id = int(f.read().strip())
+
+    if current_id != user_id:
+        with open(USERBOT_ADMIN_FILE, 'w') as f:
+            f.write(str(user_id))
+
+
+def read_userbot_admin_id():
+    with open(USERBOT_ADMIN_FILE) as f:
+        current_id = int(f.read().strip())
+    return current_id

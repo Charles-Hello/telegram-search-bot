@@ -1,157 +1,205 @@
 # telegram-search-bot
 
-一个支持CJK聊天记录搜索的Telegram Bot
+[中文文档](docs/zh/readme.md)
 
-Telegram自带搜索对CJK的支持仅限于整句，不支持分词。本项目通过存储聊天记录，进行数据库查询，解决搜索问题。
+A Telegram Bot for searching group chat records by keywords and usernames
 
+Telegram's built-in search supports only whole sentences for languages like CJK, and does not support word segmentation. This project solves the search problem by storing chat records and performing database queries.
 
-## Nav
-
-- [Feature](#eature)
-- [Requirements](#requirements)
+### Index
+- [Features](#features)
+- [Installation](#installation)
 - [Usage](#usage)
-	- [Create Bot](#create-bot)
-	- [Docker Build And Run](#docker-build-and-run)
-	- [Use In Group](#use-in-group)
-	- [Import Message History](#import-message-history)
-- [Tips](#tips)
-- [Update Records](#update-records)
+- [Update Records](#changes)
 - [Contributors](#contributors)
 - [License](#license)
 
-## Feature
+### Features
+- Searching group chat messages by multiple keywords (with pagination)
+- Locating message positions
+- Command control with restrictions
+- Supporting queries across multiple groups (determining whether the user is a group member)
+- Supporting username search
+- Synchronizing database updates after message edits
 
-- 消息记录搜索
-- 消息链接定位
-- 支持多个群组
-- 消息编辑后数据库同步更新
+![preview1](docs/en/preview.png)
+![preview2](docs/en/full.gif)
 
-![搜索](https://raw.githubusercontent.com/Taosky/telegram-search-bot/master/preview/search.png)
+### Installation
 
-![复读](https://raw.githubusercontent.com/Taosky/telegram-search-bot/master/preview/link-mode.png)
+Refer to [quick-start.md](docs/en/quick-start.md) for general installation instructions.
 
-## Requirements
-- Docker部署(外网/代理环境)
+For advanced usage, see [advanced-use.md](docs/en/advanced-use.md)
 
-## Usage
+### Usage
 
-### Create Bot
-0. 与[@botfather](https://t.me/botfather)对话按照步骤创建Bot，记录`token`备用
-1. 设置Inline Mode: 选择你的Bot进入Bot Settings，Inline Mode开启，Edit inline placeholder，设置为`[keywords] {page}`
-2. 关闭[Privacy mode](https://core.telegram.org/bots#privacy-mode)，选择你的Bot进入Bot Settings，Group Privacy - Turn off
-3. 按照喜好设置其他选项，将Bot添加到Group，设置权限读取发送信息
+- `@YourBot @Username keyword1 keyword2... page` Here are some examples:
 
-### Docker Build And Run
-0. `git clone https://github.com/Taosky/telegram-search-bot.git && cd telegram-search-bot`
-1. `docker build -t taosky/telegram-search-bot:v2 .`
-2. 修改`docker-compose.yml`, 配置运行模式、Bot ID、映射等
-3. 如使用webhook模式，查看Caddyfile进行配置，或手动进行反代设置
-4. `docker-compose up -d`后台执行
+  `@YourBot` Display all records, defaulting to page 1.
 
-### Use In Group
-0. 首先要确认是否**超级群组(supergroup)**（右键消息有copy link选项），人数较多的群组应该会自动升级，手动升级需要将群组类型设置为`Public`（立即生效，可再改回Private）
-1. `/start`: 在目标群内启用（**需管理员/创建者**）。
-2. `@your_bot [keywords] {page}`: 用于搜索，`@`无参数为显示历史消息，此时翻页用`* {page}`
-3. `/help`: 获取搜索帮助。
-4. `/chat_id`: 获取当前Chat的数字ID
-5. `/stop`: 在目标群内停用记录和搜索功能，消息记录会保存在数据库（**需管理员/创建者**）
-6. `/delete`: 在目标群已停用的情况下，用于删除数据库中的消息记录（**需管理员/创建者**）
+  `@YourBot * 2` Display all message records on page 2.
 
-### Import Message History
-0. 导出前确认群组为**超级群组(supergroup)**，否则导入将提示错误。
-1. Telegram桌面客户端，点击群组右上角`Export chat history`，选择JSON格式(仅文本)
-2. `http://127.0.0.1:5006`，选择导出的JSON文件上传。
+  `@YourBot weather 3`  Search for message records containing the keyword `weather` and flips to page 3.
 
-### 只允许特定用户启用、停止机器人与删除消息
-0. 复制 `.config.json.example` 为 `.config.json`
-1. 编辑 `.config.json` 文件的第二行，将 `false` 改为 `true`
-2. 按照 json 语法在 `group_admins` 字段内添加用户的数字 ID。
+  `@mybot @Taosky weather 4` Search for message records containing the keyword "weather" and the group member "Taosky" (full name) and flips to page 4.
 
-**注意，用户仍需在相关群组内为管理员才可以启用、停止机器人与删除消息**
+- `/help`: Get search help.
 
-## Tips
-- Inline Mode具有缓存效果，故连续重复搜索可能不会加载新的消息
-- Inline Mode placeholder修改需要重启客户端
- 
-## Update Records
-#### 2022-11-06
-- 修复了导入消息链接无法跳转问题
+- `/chat_id`:  Get the numerical ID of the current chat.
 
-#### 2022-10-31
-- 支持消息编辑后数据库同步更新
+### Changes
 
-#### 2022-10-30
-- 支持索引频道、匿名管理消息。
-- 修复了一些 BUG
+#### 2024-06-27
+- Fix message leak to non group members([#65 by JasonKhew96](https://github.com/Taosky/telegram-search-bot/pull/65))
 
-#### 2022-10-24
-- 优化了在 inline mode下发送 /help 的逻辑
-- 更好的权限控制
-- 修改了引用消息时引号的用法
+#### 2024-03-28
 
-#### 2022-06-15
-- 修复导入历史记录Chat ID不匹配的问题
-- 修复Message ID重复的问题
-- 修复导入历史记录报错的问题
+- i18n support (en_US,zh_CN)
+
+#### 2024-03-26
+
+- Give tips when /start failed ([#57](https://github.com/Taosky/telegram-search-bot/issues/57))
+
+
+#### 2023-09-07
+
+- Fixed error when importing historical records
+- Fixed issue with updating edited messages
+
+#### 2023-09-05
+
+- Fixed issue with reading chat IDs when importing historical records
+- Fixed potential incorrect message links in userbot mode ([#41](https://github.com/Taosky/telegram-search-bot/issues/41))
+- Python dependency compatibility
+
+#### 2023-07-08
+
+- Improved logging
+- Added condition to execute corresponding threads only in userbot mode
+
+#### 2023-07-01
+
+- Organized directory files
+- Modified documentation
+
+#### 2023-06-24
+
+- **Happy Dragon Boat Festival!**
+- Added userbot mode
+- Refined documentation
+
+#### 2023-05-17
+
+- Updated package versions
+- Added functionality to search by user
+- Attempted to make documentation clearer
+
 
 <details>
 <summary>more</summary>
 
+#### 2022-11-26
+
+- Optimized historical records import method
+- Resolved memory explosion issue with Python JSON reading
+
+#### 2022-11-23 ([#24](https://github.com/Taosky/telegram-search-bot/pull/24))
+
+- Some optimizations and refinements
+
+#### 2022-11-12
+
+- Built image to ghcr.io ([#22](https://github.com/Taosky/telegram-search-bot/pull/22))
+- Some minor changes, improved configuration and explanations
+
+#### 2022-11-06
+
+- Fixed issue with message links not redirecting correctly
+
+#### 2022-10-31 ([#21](https://github.com/Taosky/telegram-search-bot/pull/21))
+
+- Support for database synchronization after message editing
+- Fixed some bugs
+
+
+#### 2022-10-24 ([#19](https://github.com/Taosky/telegram-search-bot/pull/19))
+
+- Optimized logic for sending /help in inline mode
+- Better permission control
+- Changed usage of quotes when referencing messages
+
+#### 2022-06-15
+
+- Fixed issue with mismatched Chat IDs when importing historical records
+- Fixed issue with duplicate Message IDs
+- Fixed error when importing historical records
+
 #### 2022-02-17
-- 记录和搜索支持多个群组（数据库有变化，要重新导入历史记录）
-- 搜索时用户名后显示"@群组"用于区分消息来源
-- 在搜索时，根据用户是否为群组成员筛选搜索结果
+
+- Records and searches now support multiple groups (database has changed, historical records need to be reimported)
+- User names are now displayed with "@group" to distinguish message sources when searching
+- Search results are now filtered based on whether the user is a member of the group
 
 #### 2022-02-13
-- WebHook模式及docker-compose
-- 修复inline mode没有鉴权问题
-- 修复text为空时报错问题
+
+- WebHook mode and docker-compose
+- Fixed authentication issue in inline mode
+- Fixed error when text is empty
 
 #### 2022-02-08
-- Web界面可导入历史消息（5006端口）
+
+- Web interface for importing historical messages (port 5006)
 
 #### 2022-01-06
-- Docker化
+
+- Dockerized
 
 #### 2021-09-20
-- 更新python-telegram-bot库
-- 重构代码，简化操作
+
+- Updated python-telegram-bot library
+- Refactored code, simplified operations
 
 #### 2021-07-03
-- 支持多关键词搜索
+
+- Added support for searching multiple keywords
 
 #### 2021-02-04
-- 修复inline mode部分关键词结果不显示问题（特定字符导致的解析错误）
+
+- Fixed issue with some keyword results not displaying in inline mode (caused by parsing errors with specific characters)
 
 #### 2020-01-11 (V1.0)
-- 新增导入历史消息记录。（仅初始化数据库可用，且无法定位）
-- 新增原消息链接模式，超级群组可用，通过点击链接定位消息
+
+- Added ability to import historical message records. (Only available for initializing the database, and cannot be located)
+- Added original message link mode, available for supergroups, allows clicking on links to locate messages
 
 #### 2019-04-27
-- 添加代理选项（酸酸乳的socks5貌似不行，http可用）
+
+- Added proxy option (Shadowsocks' socks5 seems to be not working, http works)
 
 #### 2019-04-02
-- 修复重复报时。
-- 完善README。
+
+- Fixed repeated reporting time issue.
+- Improved README.
 
 #### 2019-03-03
-- 修复搜索的页码问题。
+
+- Fixed pagination issue in searches.
 
 #### 2019-03-02
-- 重写了大量代码，更换MYSQL数据库为SQLITE，使用ORM，简化后续的开发及方便用户配置。
-- 增加排除ID的配置
-- 增加图片、视频、语音、音频的复读
-- 增加群员获取数据库的命令
-- 存储信息过程中过滤机器人的信息
-- Bot的用户名无需手动设置
-- 修复管理员权限模式下的无权限不能复读的问题。
+
+- Rewrote a large amount of code, replaced MYSQL database with SQLITE, used ORM, simplified subsequent development and user configuration.
+- Added configuration for excluding IDs
+- Added repetition of images, videos, voice messages, and audio
+- Added command to obtain database of group members
+- Filter robot information during storage
+- Bot username no longer needs to be set manually
+- Fixed issue where users with no permission under administrator mode could not repeat messages.
 
 </details>
 
 ## Contributors
 
 <a href="https://github.com/Taosky/telegram-search-bot/graphs/contributors"><img src="https://opencollective.com/telegram-search-bot/contributors.svg?width=890&button=false" /></a>
-
 
 ## License
 

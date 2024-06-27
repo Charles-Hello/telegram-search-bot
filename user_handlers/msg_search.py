@@ -3,30 +3,87 @@ import re
 import html
 import telegram
 import os
-from telegram import InlineQueryResultArticle, InputTextMessageContent, InlineQueryResultCachedSticker, InlineQueryResultCachedPhoto
+from telegram import InlineQueryResultArticle, InputTextMessageContent, InlineQueryResultCachedSticker
 from telegram.ext import InlineQueryHandler
 from database import User, Message, Chat, DBSession
 from sqlalchemy import and_
 
+from utils import get_filter_chats, is_userbot_mode, get_text_func
+
+_ = get_text_func()
+
 SEARCH_PAGE_SIZE = 25
-CACHE_TIME = int(os.getenv('CACHE_TIME'))
+CACHE_TIME = 300 if not os.getenv('CACHE_TIME') else int(os.getenv('CACHE_TIME'))
 
 
-def search_messages(keywords, page, filter_chats):
+def get_query_matches(query):
+    user, keywords, page = None, None, 1
+    if not query:
+        pass
+    elif re.match(' *\* +(\d+)', query):
+        user, keywords, page = None, None, int(
+            re.match('\* +(\d+)', query).group(1))
+    # Match @user * page 
+    elif re.match(' *@(.+) +\* +(\d+)', query):
+        r = re.match(' *@(.+) +\* +(\d+)', query)
+        user, keywords, page = r.group(1), None, int(r.group(2))
+    else:
+        keywords = [word for word in query.split(' ')]
+        if keywords[-1].isdigit():
+            page = int(keywords[-1])
+            keywords.pop()
+        else:
+            page = 1
+        # Special handling when the first character is @
+        if len(keywords) >= 1 and keywords[0].startswith('@'):
+            user = keywords[0].lstrip('@')
+            if len(keywords) >= 2:
+                keywords = keywords[1:]
+            else:
+                keywords = None
+    return user, keywords, page
+
+
+def search_messages(uname, keywords, page, filter_chats):
     messages = []
     start = (page - 1) * SEARCH_PAGE_SIZE
     stop = page * SEARCH_PAGE_SIZE
     session = DBSession()
     chat_ids = [chat[0] for chat in filter_chats]
     chat_titles = [chat[1] for chat in filter_chats]
+    user_ids = []
+
+    if uname:
+        user_count = session.query(User).filter(
+            User.fullname.like('%' + uname + '%')).count()
+        if user_count >= 1:
+            for user in session.query(User).filter(User.fullname.like('%' + uname + '%')).all():
+                user_ids.append(user.id)
 
     if keywords:
-        rule = and_(*[Message.text.like('%' + keyword + '%') for keyword in keywords])
-        count = session.query(Message).filter(rule).filter(Message.from_chat.in_(chat_ids)).count()
-        query = session.query(Message).filter(rule).filter(Message.from_chat.in_(chat_ids))
+        rule = and_(*[Message.text.like('%' + keyword + '%')
+                    for keyword in keywords])
+        if uname:
+            count = session.query(Message).filter(rule).filter(
+                Message.from_chat.in_(chat_ids)).filter(Message.from_id.in_(user_ids)).count()
+            query = session.query(Message).filter(rule).filter(
+                Message.from_chat.in_(chat_ids)).filter(Message.from_id.in_(user_ids))
+        else:
+            count = session.query(Message).filter(rule).filter(
+                Message.from_chat.in_(chat_ids)).count()
+            query = session.query(Message).filter(
+                rule).filter(Message.from_chat.in_(chat_ids))
     else:
-        count = session.query(Message).filter(Message.from_chat.in_(chat_ids)).count()
-        query = session.query(Message).filter(Message.from_chat.in_(chat_ids))
+        if uname:
+            count = session.query(Message).filter(Message.from_chat.in_(
+                chat_ids)).filter(Message.from_id.in_(user_ids)).count()
+            query = session.query(Message).filter(Message.from_chat.in_(
+                chat_ids)).filter(Message.from_id.in_(user_ids))
+        else:
+            count = session.query(Message).filter(
+                Message.from_chat.in_(chat_ids)).count()
+            query = session.query(Message).filter(
+                Message.from_chat.in_(chat_ids))
 
     for message in query.order_by(Message.date.desc()).slice(start, stop).all():
         user = session.query(User).filter_by(id=message.from_id).one()
@@ -65,51 +122,68 @@ def inline_caps(update, context):
     if not chats:
         return
 
-    filter_chats = []
-    for chat in chats:
-        if not chat.enable:
-            continue
-        try:
-            chat_member = context.bot.get_chat_member(chat_id=chat.id, user_id=from_user_id)
-        except telegram.error.BadRequest:
-            continue
-        except telegram.error.Unauthorized:
-            continue
+    # Userbot mode
+    if is_userbot_mode():
+        filter_chats = get_filter_chats(from_user_id)
 
-        if chat_member.status != 'left' and chat_member.status != 'kicked':
-            filter_chats.append((chat.id, chat.title))
+    else:
+        filter_chats = []
+        for chat in chats:
+            if not chat.enable:
+                continue
+            try:
+                chat_member = context.bot.get_chat_member(
+                    chat_id=chat.id, user_id=from_user_id)
+            except telegram.error.BadRequest:
+                continue
+            except telegram.error.Unauthorized:
+                continue
+
+            if chat_member.status != 'left' and chat_member.status != 'kicked':
+                filter_chats.append((chat.id, chat.title))
 
     query = update.inline_query.query
 
-    if not query:
-        keywords, page = None, 1
-    elif re.match(' *\* +(\d+)', query):
-        keywords, page = None, int(re.match('\* +(\d+)', query).group(1))
-    else:
-        keywords = [word for word in query.split(" ")]
-        if keywords[-1].isdigit():
-            page = int(keywords[-1])
-            keywords.pop()
-        else:
-            page = 1
+    user, keywords, page = get_query_matches(query)
 
-    messages, count = search_messages(keywords, page, filter_chats)
+    # Before searching for messages, check if the user belongs to any group with Bot enabled, if not. Directly return an sticker
+    # Looping 20 times is because on certain devices, a single sticker may be improperly stretched, and in addition, 20 stickers are more interesting
+    if len(filter_chats) == 0:
+        results = []
+        num = 0
+        for i in range(20):
+            results.append(
+                InlineQueryResultCachedSticker(
+                    id=f'unauthorized_sticker_{str(num)}',
+                    sticker_file_id='CAACAgUAAxkDAAEFBIhjffVfXIFyngE4vR2Zg_uDkDS41gACMAsAAoB48FdrYCP5TE3CEh4E'
+                )
+            )
+            num += 1
+        context.bot.answer_inline_query(
+            update.inline_query.id, results, cache_time=CACHE_TIME, is_personal=True)
+        return
+
+    messages, count = search_messages(user, keywords, page, filter_chats)
 
     if count == 0:
         results = [
             InlineQueryResultArticle(
                 id='empty',
-                title='好像没有查询到任何结果呢？',
-                description='Attention! 不要点击任何按钮，否则会发送空消息。',
-                input_message_content=InputTextMessageContent('.')
+                title=_('No results found'),
+                description=_('Attention! Do not click any buttons, otherwise an empty message will be sent'),
+                input_message_content=InputTextMessageContent('⁤')
             )]
     else:
-        results = [InlineQueryResultArticle(
-            id='info',
-            title='Total:{}. Page {} of {}'.format(count, page, math.ceil(count / SEARCH_PAGE_SIZE)),
-            description='Attention! 这只是一条提示消息，不要点击它，否则会发送 /help 消息',
-            input_message_content=InputTextMessageContent(f'/help@{context.bot.get_me().username}')
-        )]
+        results = [
+            InlineQueryResultArticle(
+                id='info',
+                title='Total:{}. Page {} of {}'.format(
+                    count, page, math.ceil(count / SEARCH_PAGE_SIZE)),
+                description=_('Attention! This is just a prompt message, do not click on it, otherwise a /help message will be sent'),
+                input_message_content=InputTextMessageContent(
+                    f'/help@{context.bot.get_me().username}')
+            )
+        ]
 
     for message in messages:
         results.append(
@@ -125,7 +199,8 @@ def inline_caps(update, context):
                 )
             )
         )
-    context.bot.answer_inline_query(update.inline_query.id, results, cache_time=CACHE_TIME)
+    context.bot.answer_inline_query(
+        update.inline_query.id, results, cache_time=CACHE_TIME, is_personal=True)
 
 
 handler = InlineQueryHandler(inline_caps)
